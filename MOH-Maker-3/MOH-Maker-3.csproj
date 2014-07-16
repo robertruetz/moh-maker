@@ -34,7 +34,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Class1.cs">
+    <Compile Include="MOH-Maker.cs">
       <SubType>Form</SubType>
     </Compile>
   </ItemGroup>
@@ -47,8 +47,8 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Class1.resx">
-      <DependentUpon>Class1.cs</DependentUpon>
+    <EmbeddedResource Include="MOH-Maker.resx">
+      <DependentUpon>MOH-Maker.cs</DependentUpon>
     </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
