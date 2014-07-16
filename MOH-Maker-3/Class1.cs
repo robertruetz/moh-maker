@@ -7,7 +7,6 @@ using SoundForge;
 
 
 // TODO: Need to handle situation where the total segment length is greater than the MOH length. 
-// TODO: Consider adding an "Add" button to add segments to the list.
 // TODO: Log file to keep track of previously opened directories and other specs.
 
 
@@ -45,9 +44,7 @@ public class Form1 : Form
             return;
         }
 
-        addSegments(Directory.GetFiles(segsFolder));
-
-        
+        addSegments(Directory.GetFiles(segsFolder, "*.WAV"));
     }
 
     private void addSegments(string[] segs)
@@ -84,10 +81,7 @@ public class Form1 : Form
 
     private void musicSelectButton_Click(object sender, EventArgs e)
     {
-        OpenFileDialog opener = new OpenFileDialog();
-        opener.Filter = "WAV files (*.wav)|*.wav";
-        opener.RestoreDirectory = true;
-        opener.Title = "Choose the music bed file.";
+        OpenFileDialog opener = createWaveOpener("Choose a music file");
 
         if ((musicFilePath = PathGetter(opener)) != "UserCancelled")
         {
@@ -95,11 +89,23 @@ public class Form1 : Form
 
             outPutDirectory = Directory.GetParent(musicFilePath).ToString();
 
-            string music = Path.GetFileName(musicFilePath);
-            musicFileTextbox.Text = music;
+            musicFileTextbox.Text = Path.GetFileName(musicFilePath);
             musicFileTextbox.ForeColor = Color.Black;
         }
+        else
+        {
+            return;
+        }
 
+    }
+
+    private OpenFileDialog createWaveOpener(string title)
+    {
+        OpenFileDialog newOpener = new OpenFileDialog();
+        newOpener.Filter = "WAV files (*.wav)|*.wav";
+        newOpener.RestoreDirectory = true;
+        newOpener.Title = title;
+        return newOpener;
     }
 
     private void outFormatButton_Click(object sender, EventArgs e)
