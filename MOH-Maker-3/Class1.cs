@@ -55,7 +55,12 @@ public class Form1 : Form
         foreach (string s in segs)
         {
             // Handle attempts to add duplicate segments
-            if (!listBox1.Items.Contains(s))
+            if (listBox1.Items.Contains(s))
+            {
+                duplicateKey = true;
+                
+            }
+            else
             {
                 //dictionary uses the seg filename as a key and the path to the seg as a value
                 segDictionary.Add(s, s);
@@ -63,10 +68,6 @@ public class Form1 : Form
                 segDupeDictionary.Add(s, 0);
                 segsList.Add(s);
                 listBox1.Items.Add(s);
-            }
-            else
-            {
-                duplicateKey = true;
             }
 
         }
