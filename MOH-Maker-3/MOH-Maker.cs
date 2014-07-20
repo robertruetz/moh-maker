@@ -25,10 +25,6 @@ public class Form1 : Form
     // Tracks the number of each duplicated segment so we can keep them straight.
     Dictionary<string, int> segDupeDictionary = new Dictionary<string, int>();
 
-    //double totalLength = 0;
-    //double dBLevelDrop = 0;
-
-    bool haveSegsFolder = false;
     private Button removeButton;
     private TextBox musicFileTextbox;
     private Button addButton;
@@ -44,7 +40,6 @@ public class Form1 : Form
 
         if ((segsFolder = SfHelpers.ChooseDirectory("Choose the folder with your segments.", @"C:\")) != null)
         {
-            haveSegsFolder = true;
             segsSelectButton.Text = "Segments: " + segsFolder;
         }
         else
@@ -55,12 +50,13 @@ public class Form1 : Form
         addSegments(Directory.GetFiles(segsFolder, "*.WAV"));
     }
 
-    public List<string> listBoxItemsToStringList(ListBox inBox)
+    public List<string> listBoxItemsToStringList(ListBox inBox, Dictionary<string, string> segDictionary)
     {
         List<string> outList = new List<string>();
         for (int count = 0; count < inBox.Items.Count; count++)
         {
-            outList.Add(inBox.Items[count].ToString());
+            string voSeg = inBox.Items[count].ToString();
+            outList.Add(segDictionary[voSeg]);
         }
         return outList;
     }
@@ -192,118 +188,112 @@ public class Form1 : Form
 
         
     }
-
+    
     public void makeButton_Click(object sender, EventArgs e)
     {
-        if (haveSegsFolder && haveMusicFilePath)
+        // pull our segments out of the listbox for processing
+        List<string> segments = new List<string>();
+        if (listBox1.Items.Count > 0)
         {
-            if (newProfile.HaveLength && newProfile.HaveDuckLevel)
-            {
-                //if duck level box never gets changed, haveDuckLevel is never set to true.
-
-                //if we've made it this far, we're ready to do our mixing.
-
-                //pull our segments in order from the listBox
-                List<string> segments = new List<string>();
-                foreach (string item in listBox1.Items)
-                {
-                    //Lookup the seg path and add it to our seg list
-                    segments.Add(segDictionary[item]);
-                }
-                    
-                //get the total length of the segments
-                double segsLength = FindSegsLength(segments, appl);
-                //get the length of silence between segments
-                double amtSilence = FindSilenceLength(newProfile.ProjectLength, segsLength, segments.Count);
-
-                //Lay our music bed down in our output file
-                ISfFileHost musicFile = appl.OpenFile(musicFilePath, false, true);
-
-                if (musicFile.SampleRate != 44100)
-                {
-                    //resample and channel convert music file to 44.1Khz mono
-                    musicFile.DoResample(44100, 4, EffectOptions.WaitForDoneOrCancel | EffectOptions.EffectOnly);
-                }
-                if (musicFile.Channels > 1)
-                {
-                    double[,] aGainMap = new double[1, 2] { { 0.5, 0.5 } };
-                    musicFile.DoConvertChannels(1, 0, aGainMap, EffectOptions.WaitForDoneOrCancel | EffectOptions.EffectOnly);
-                }
-
-                SfAudioSelection music = new SfAudioSelection(musicFile);
-
-                long prodLength = musicFile.SecondsToPosition(newProfile.ProjectLength);
-
-                ISfFileHost outFile = appl.NewFile(musicFile.DataFormat, false);
-
-                // Start our mixing operation.
-
-                // Paste our music file into the out file until it is longer than the total prod length.
-                while (outFile.Length < prodLength)
-                {
-                    outFile.OverwriteAudio(outFile.Length, 0, musicFile, music);
-                }
-
-                musicFile.Close(CloseOptions.DiscardChanges);
-
-                //crop our outFile to the desired length.
-                outFile.CropAudio(0, prodLength);
-
-                //Normalize the music volume to a comfortable level.
-                int normLevel = -24;    //might replace with user selectable value
-                bool normRMS = true;    //replace with user selection?
-
-                appl.DoEffect("Normalize", GetNormPreset(appl, normLevel, normRMS), EffectOptions.EffectOnly | EffectOptions.WaitForDoneOrCancel);
-
-                //Get the start position for our mixing operation.
-                double startPosition = amtSilence / 2;
-
-                // Fade out music at the end of our file
-                double fadeLength = 2.0;
-                if (startPosition < 2)
-                {
-                    fadeLength = startPosition / 2;
-                }
-                Int64 ccFade = outFile.Length - outFile.SecondsToPosition(fadeLength);
-                outFile.DoEffect("Graphic Fade", "-6dB exponential fade out", new SfAudioSelection(ccFade, outFile.Length), EffectOptions.EffectOnly);
-
-                long pasteSec = outFile.SecondsToPosition(startPosition);
-                SfAudioCrossfade cFade = new SfAudioCrossfade(outFile.SecondsToPosition(.175));
-                double level = SfHelpers.dBToRatio(newProfile.DuckLevel);
-
-                // Begin mixing our segments in.
-                foreach (string file in segments)
-                {
-                    ISfFileHost segment = appl.OpenFile(file, false, true);
-
-                    //remove any markers from the segment and add marker with the filename
-                    segment.Markers.Clear();
-                    segment.Markers.AddMarker(0, Path.GetFileName(file));
-
-                    // resample to 44100Hz and make sure the file is mono to match music
-                    ResampleAndMono(segment, appl, 44100);
-
-                    SfAudioSelection pasteSection = new SfAudioSelection(pasteSec, segment.Length);
-
-                    outFile.DoMixReplace(pasteSection, level, 1, segment, SfAudioSelection.All, cFade, cFade, EffectOptions.EffectOnly | EffectOptions.WaitForDoneOrCancel);
-
-                    pasteSec += (segment.Length + outFile.SecondsToPosition(amtSilence));
-                    segment.Close(CloseOptions.DiscardChanges);
-                }
-
-                outFile.Save(SaveOptions.AlwaysPromptForFilename);
-                outFile.Close(CloseOptions.SaveChanges);
-            }
-            else
-            {
-                MessageBox.Show("Something is wrong with your MOH Length or Duck Level. Try again.");
-            }
+            segments = listBoxItemsToStringList(listBox1, segDictionary);
         }
         else
         {
-            MessageBox.Show("Something is missing. Did you choose a Segments folder and a Music file?");
+            MessageBox.Show("There are no VO segments selected.");
             return;
         }
+
+        // get our total VO length
+        double segsLength = FindSegsLength(segments, appl);
+        // check to make sure our VO isn't longer than our total project length
+        if (segsLength > newProfile.ProjectLength)
+        {
+            MessageBox.Show("The total length of the VO segments is larger than the total project length.\n" +
+                "Either remove VO segments or increase the Project Length.");
+            return;
+        }
+
+        //get the length of silence between segments
+        double amtSilence = FindSilenceLength(newProfile.ProjectLength, segsLength, segments.Count);
+
+        if (!haveMusicFilePath)
+        {
+            MessageBox.Show("You didn't select a music file.");
+            return;
+        }
+
+        if (!newProfile.HaveDuckLevel)
+        {
+            MessageBox.Show("You didn't enter a valid Duck Level.");
+            return;
+        }
+
+        //Lay our music bed down in our output file
+        ISfFileHost musicFile = appl.OpenFile(musicFilePath, false, true);
+        // make sure our music file is in correct format
+        ResampleAndMono(musicFile, appl, 44100);
+  
+        SfAudioSelection music = new SfAudioSelection(musicFile);
+
+        long prodLength = musicFile.SecondsToPosition(newProfile.ProjectLength);
+
+        ISfFileHost outFile = appl.NewFile(musicFile.DataFormat, false);
+
+        // Paste our music file into the out file until it is longer than the total prod length.
+        while (outFile.Length < prodLength)
+        {
+            outFile.OverwriteAudio(outFile.Length, 0, musicFile, music);
+        }
+
+        musicFile.Close(CloseOptions.DiscardChanges);
+
+        //crop our outFile to the desired length.
+        outFile.CropAudio(0, prodLength);
+
+        //Normalize the music volume to a comfortable level.
+        int normLevel = -24;    //might replace with user selectable value
+        bool normRMS = true;    //replace with user selection?
+
+        appl.DoEffect("Normalize", GetNormPreset(appl, normLevel, normRMS), EffectOptions.EffectOnly | EffectOptions.WaitForDoneOrCancel);
+
+        //Get the start position for our mixing operation.
+        double startPosition = amtSilence / 2;
+
+        // Fade out music at the end of our file
+        double fadeLength = 2.0;
+        if (startPosition < 2)
+        {
+            fadeLength = startPosition / 2;
+        }
+        Int64 ccFade = outFile.Length - outFile.SecondsToPosition(fadeLength);
+        outFile.DoEffect("Graphic Fade", "-6dB exponential fade out", new SfAudioSelection(ccFade, outFile.Length), EffectOptions.EffectOnly);
+
+        long pasteSec = outFile.SecondsToPosition(startPosition);
+        SfAudioCrossfade cFade = new SfAudioCrossfade(outFile.SecondsToPosition(.175));
+        double level = SfHelpers.dBToRatio(newProfile.DuckLevel);
+
+        // Begin mixing our segments in.
+        foreach (string file in segments)
+        {
+            ISfFileHost segment = appl.OpenFile(file, false, true);
+
+            //remove any markers from the segment and add marker with the filename
+            segment.Markers.Clear();
+            segment.Markers.AddMarker(0, Path.GetFileName(file));
+
+            // resample to 44100Hz and make sure the file is mono to match music
+            ResampleAndMono(segment, appl, 44100);
+
+            SfAudioSelection pasteSection = new SfAudioSelection(pasteSec, segment.Length);
+
+            outFile.DoMixReplace(pasteSection, level, 1, segment, SfAudioSelection.All, cFade, cFade, EffectOptions.EffectOnly | EffectOptions.WaitForDoneOrCancel);
+
+            pasteSec += (segment.Length + outFile.SecondsToPosition(amtSilence));
+            segment.Close(CloseOptions.DiscardChanges);
+        }
+
+        outFile.Save(SaveOptions.AlwaysPromptForFilename);
+        outFile.Close(CloseOptions.SaveChanges);
     }
 
     public ISfFileHost ResampleAndMono(ISfFileHost inFile, IScriptableApp appl, uint rate)
